@@ -1,0 +1,16 @@
+{
+  "name": "norba-intertop-sync",
+  "version": "1.0.0",
+  "description": "Синхронізація залишків (NORBA/KeyCRM -> Intertop) та замовлень (Intertop -> KeyCRM)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "better-sqlite3": "^11.3.0",
+    "dotenv": "^16.4.5",
+    "node-cron": "^3.0.3",
+    "node-fetch": "^2.7.0"
+  }
+}
