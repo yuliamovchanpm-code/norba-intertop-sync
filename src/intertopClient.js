@@ -126,7 +126,10 @@ async function getOperation(operationId) {
 async function getOrders({ status = 'new', limit = 50, offset = 0 } = {}) {
   const filter = encodeURIComponent(`status::${status}`);
   const json = await intertopFetch(`/orders/?filter=${filter}&sort=id&limit=${limit}&offset=${offset}`);
-  return json?.data ?? [];
+  const data = json?.data;
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.items)) return data.items;
+  return [];
 }
 
 async function getOrder(orderId) {
