@@ -105,6 +105,7 @@ async function runStatusSync() {
       await sleep(1200);
     }
 
+    console.log('[statusSync]', JSON.stringify({ checked: pending.length, updated, skipped, blocked, blockedOrders, errors }));
     logSync('status', errors.length ? 'error' : 'ok', {
       checked: pending.length,
       updated,

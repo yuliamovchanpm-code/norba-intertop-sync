@@ -79,7 +79,10 @@ async function intertopFetch(path, options = {}, _retry = true) {
     return intertopFetch(path, options, false);
   }
   if (!res.ok) {
-    throw new Error(`Intertop ${options.method || 'GET'} ${path} -> ${res.status}: ${JSON.stringify(json)}`);
+    const err = new Error(`Intertop ${options.method || 'GET'} ${path} -> ${res.status}: ${JSON.stringify(json)}`);
+    err.status = res.status;
+    err.body = json;
+    throw err;
   }
   return json;
 }
@@ -91,26 +94,46 @@ const WAREHOUSE_EXTERNAL_ID = process.env.INTERTOP_WAREHOUSE_ID || 'default';
 /**
  * Push quantity updates to Intertop in batches of <=1000, per API limit.
  * offers: [{ article, barcode, quantity }]
- * Returns array of { operationId, batchSize }.
+ * Returns { results: [{ operationId, batchSize }], rejected: [{ article, barcode, errors }] }.
+ *
+ * Intertop відхиляє весь батч (422), якщо хоч один оффер невалідний. У відповіді
+ * є data.errors.offers.{index} - прибираємо саме ці офери й повторюємо батч,
+ * щоб один кривий артикул не блокував оновлення всіх інших.
  */
 async function updateOffersQuantity(offers) {
   const BATCH = 1000;
+  const MAX_ATTEMPTS = 3;
   const results = [];
+  const rejected = [];
   for (let i = 0; i < offers.length; i += BATCH) {
-    const batch = offers.slice(i, i + BATCH).map((o) => ({
+    let batch = offers.slice(i, i + BATCH).map((o) => ({
       article: o.article,
       ...(o.barcode ? { barcode: o.barcode } : {}),
       quantity: o.quantity,
       warehouse_external_id: WAREHOUSE_EXTERNAL_ID,
     }));
-    const json = await intertopFetch('/offers/quantity', {
-      method: 'PATCH',
-      body: JSON.stringify({ offers: batch }),
-    });
-    results.push({ operationId: json?.data?.id ?? json?.data?.operation_id, batchSize: batch.length, raw: json });
+    for (let attempt = 1; attempt <= MAX_ATTEMPTS && batch.length; attempt++) {
+      try {
+        const json = await intertopFetch('/offers/quantity', {
+          method: 'PATCH',
+          body: JSON.stringify({ offers: batch }),
+        });
+        results.push({ operationId: json?.data?.id ?? json?.data?.operation_id, batchSize: batch.length, raw: json });
+        break;
+      } catch (err) {
+        const offerErrors = err.status === 422 ? err.body?.data?.errors?.offers : null;
+        if (!offerErrors || attempt === MAX_ATTEMPTS) throw err;
+        const badIdx = new Set(Object.keys(offerErrors).map(Number));
+        batch.forEach((o, idx) => {
+          if (badIdx.has(idx)) rejected.push({ article: o.article, barcode: o.barcode, quantity: o.quantity, errors: offerErrors[idx] });
+        });
+        batch = batch.filter((_, idx) => !badIdx.has(idx));
+        await sleep(1200);
+      }
+    }
     await sleep(1200); // be gentle with the API between batches
   }
-  return results;
+  return { results, rejected };
 }
 
 async function getOperation(operationId) {

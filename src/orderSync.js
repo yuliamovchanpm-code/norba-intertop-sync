@@ -92,6 +92,7 @@ async function runOrderSync() {
       }
     }
 
+    console.log('[orderSync]', JSON.stringify({ found: newOrders.length, created, skipped, errors }));
     logSync('orders', errors.length ? 'error' : 'ok', { found: newOrders.length, created, skipped, errors });
     return { found: newOrders.length, created, skipped, errors };
   } catch (err) {
